@@ -3,6 +3,7 @@ use clap::Subcommand;
 use csv::ReaderBuilder;
 use csv::WriterBuilder;
 use serde_derive::{Deserialize, Serialize};
+use std::error::Error;
 use std::fs::File;
 use std::fs::{OpenOptions, metadata};
 use std::io::BufReader;
@@ -23,6 +24,7 @@ struct Cli {
 enum Commands {
     CreateTask { title: String, due: String },
     AllTask,
+    CompleteTask { id: String },
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -33,7 +35,7 @@ struct Task {
     status: String,
 }
 
-fn write_to_csv(task: Task) -> Result<(), Box<dyn std::error::Error>> {
+fn write_to_csv(task: Task) -> Result<(), Box<dyn Error>> {
     let file_path = "test.csv";
     let file_exists = metadata(file_path).is_ok();
 
@@ -49,9 +51,19 @@ fn write_to_csv(task: Task) -> Result<(), Box<dyn std::error::Error>> {
         .from_writer(file);
 
     writer.serialize(task)?;
-
     writer.flush()?;
 
+    Ok(())
+}
+
+fn write_tasks_to_csv(tasks: &[Task]) -> Result<(), Box<dyn Error>> {
+    let mut writer = WriterBuilder::new().from_writer(File::create("test.csv")?);
+
+    for task in tasks {
+        writer.serialize(task)?;
+    }
+
+    writer.flush()?;
     Ok(())
 }
 
@@ -86,11 +98,28 @@ fn main() {
                 eprint!("{}", e)
             }
         }
+        // get all task
         Commands::AllTask => {
             println!("Read All Task");
             let tasks = read_csv_file().unwrap();
             for task in tasks {
                 println!("{:?}", task)
+            }
+        }
+        // Complete a task using id
+        Commands::CompleteTask { id } => {
+            println!("Complete Task {}", id);
+            let mut tasks = read_csv_file().unwrap();
+            if let Ok(search_id) = Uuid::parse_str(&id) {
+                if let Some(task) = tasks.iter_mut().find(|task| task.id == search_id) {
+                    println!("Found task: {:?}", task);
+                    task.status = "Complete".to_string();
+                    write_tasks_to_csv(&tasks).unwrap();
+                } else {
+                    println!("Task not found");
+                }
+            } else {
+                println!("Invalid UUID format");
             }
         }
     }
